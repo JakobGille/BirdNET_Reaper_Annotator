@@ -214,7 +214,7 @@ entry_kw.insert(0, "23")
 
 tk.Label(frame_params, text="Threshold (0.1 - 1.0):").grid(row=3, column=0, sticky="e", padx=5)
 entry_thresh = tk.Entry(frame_params, width=15); entry_thresh.grid(row=3, column=1)
-entry_thresh.insert(0, "0.7")
+entry_thresh.insert(0, "0.3")
 
 var_images = tk.BooleanVar(value=False)
 tk.Checkbutton(root, text="Generate Spectrogram Images (takes longer)", variable=var_images).pack(pady=5)

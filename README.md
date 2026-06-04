@@ -2,9 +2,8 @@
 
 *Note: The code in this repository was generated with the assistance of AI.*
 
-This Python tool provides a graphical user interface to analyze audio recordings for bird species using the **BirdNET** machine learning model. It is tailored for audio professionals, sound artists, and field recordists. It natively handles multichannel files (such as 1st, 3rd, or 5th order Ambisonics) by automatically extracting the first channel (W-channel) for the monophonic classifier.
-
-The script is optimized for a seamless workflow in Reaper, offering both marker generation and visual spectrograms to eliminate the need for manual timestamp alignment.
+This Python tool  analyzes audio recordings for bird species using the **BirdNET** machine learning model.
+The script is optimized for a seamless workflow in **Reaper**, offering both marker generation as CSV, visual spectrograms export and generates an overview over the detected bird species. 
 
 ## Features
 
@@ -41,7 +40,7 @@ python bird_analyzer.py
 - **Latitude / Longitude:** Decimal format (e.g., 45.5 and -73.6).
 - **Calendar Week:** 1 to 52.
 
-1. Set the detection **Threshold** (0.1 to 1.0). A value of `0.7` is recommended for high accuracy.
+1. Set the detection **Threshold** (0.1 to 1.0). A value of `0.3` is recommended.
 2. (Optional) Check the box to generate spectrogram images. *Note: This significantly increases processing time.*
 3. Click **Start Analysis**. The model will be downloaded automatically upon the very first execution.
 
@@ -71,7 +70,7 @@ To align them perfectly:
 
 ### Citation & Acknowledgments
 
-This tool utilizes the BirdNET algorithm for avian detection. If you use this script in an academic or research context, please refer to the original BirdNET publication:
+This tool utilizes the BirdNET algorithm for avian detection and refers to the original BirdNET publication:
 ```bash
 @article{kahl2021birdnet,
   title={BirdNET: A deep learning solution for avian diversity monitoring},
