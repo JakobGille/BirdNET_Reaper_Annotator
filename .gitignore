@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual Environments (falls du später welche nutzt)
+venv/
+env/
+.venv/
+.env
+
+# OS Files (Windows & macOS)
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs & Editoren
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project Specific: Audio Files
+# Verhindert den versehentlichen Upload von großen Field Recordings
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.aiff
+
+# Project Specific: Generated Output
+# Ignoriert die generierten Spektrogramme und Reaper-Tabellen
+*.png
+*.csv
+
+!Example_CSV_Output.csv
+!Example_Sonogram_Output.png
