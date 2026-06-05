@@ -3,7 +3,9 @@
 *Note: The code in this repository was generated with the assistance of AI.*
 
 This Python tool  analyzes audio recordings for bird species using the **BirdNET** machine learning model.
-The script is optimized for a seamless workflow in **Reaper**, offering both marker generation as CSV, visual spectrograms export and generates an overview over the detected bird species. 
+The script is optimized for a seamless workflow in **Reaper**, offering both marker generation as CSV, visual sonogram export and generates an CSV overview over the detected bird species.
+
+[Example Sonogram Output](Example_Sonogram_Output.png)
 
 ## Features
 
@@ -54,17 +56,17 @@ This is the fastest way to see the results in your timeline.
 2. In the top menu, navigate to **View** > **Region/Marker Manager**.
 3. Right-click in the empty area of the manager window and select **Import regions/markers...**.
 4. Select the generated `[filename]_reaper_regions.csv` file.
-5. The detected birds will immediately appear as labeled regions above your audio item, perfectly aligned with the audio events.
+5. The detected birds will immediately appear as labeled regions above your audio item, aligned with the audio events.
 
 ### Method 2: Using the Spectrogram Images
 
 If you chose to generate the spectrograms, the script splits your audio into 60-second chunks and exports them as borderless PNG images. This is useful if you want to visually verify the bird calls in the frequency spectrum without rendering spectral views natively in Reaper.
 
-To align them perfectly:
+To align them:
 
 1. Create a new, empty track directly below your main audio track.
 2. Drag and drop the generated images (`_min_001.png`, `_min_002.png`, etc.) onto this new track in sequential order.
-3. **CRITICAL STEP:** By default, Reaper assigns a static length to imported images (e.g., 1 measure or 10 seconds). Because the images represent exactly 60 seconds of audio, you must grab the right edge of each image item and stretch it until its length is exactly **60s**.
+3. By default, Reaper assigns a static length to imported images (e.g., 1 measure or 10 seconds). Because the images represent exactly 60 seconds of audio, you must grab the right edge of each image item and stretch it until its length is exactly **60s**.
 4. Snap the stretched images back-to-back.
 5. Because the images were generated without borders, the cyan vertical markers on the PNGs will now perfectly sync up with the audio waveforms of the track above.
 
