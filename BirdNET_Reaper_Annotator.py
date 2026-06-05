@@ -1,3 +1,7 @@
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import librosa
@@ -10,6 +14,31 @@ import math
 import csv
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
+from geopy.geocoders import Nominatim
+
+def fetch_coordinates():
+    """Fetches latitude and longitude for a given city name using OpenStreetMap."""
+    city_name = entry_city.get().strip()
+    if not city_name:
+        messagebox.showwarning("Missing Input", "Please enter a city name.")
+        return
+        
+    try:
+        # Nominatim requires a custom user_agent string to identify the application
+        geolocator = Nominatim(user_agent="birdnet_reaper_analyzer_tool")
+        location = geolocator.geocode(city_name)
+        
+        if location:
+            # Clear existing values and insert the new coordinates
+            entry_lat.delete(0, tk.END)
+            entry_lat.insert(0, str(round(location.latitude, 4)))
+            
+            entry_lon.delete(0, tk.END)
+            entry_lon.insert(0, str(round(location.longitude, 4)))
+        else:
+            messagebox.showwarning("Not Found", f"Could not find coordinates for '{city_name}'.")
+    except Exception as e:
+        messagebox.showerror("Network Error", f"Failed to retrieve coordinates. Are you connected to the internet?\n\nDetails: {e}")
 
 def run_analysis():
     # Get user inputs from the GUI
@@ -70,35 +99,26 @@ def run_analysis():
         # 4. Write the summary CSV file (Grouped and counted species)
         csv_path = os.path.join(out_dir, f"{base_name}_bird_summary.csv")
         
-        # Count the occurrences of each bird species
         bird_counts = {}
         for det in detections:
-            # birdnetlib returns common_name in English by default
             key = (det['common_name'], det['scientific_name'])
             bird_counts[key] = bird_counts.get(key, 0) + 1
             
         with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
             writer = csv.writer(csv_file, delimiter=';')
-            
-            # Write the metadata header row
-            # Column A: File Title | Column B: Lat, Lon | Column C: Calendar Week
             writer.writerow([base_name, f"{lat}, {lon}", f"Week {kw}"])
-            writer.writerow([]) # Empty row for visual separation
-            
-            # Write the table headers in English
+            writer.writerow([]) 
             writer.writerow(['Common Name (EN)', 'Scientific Name', 'Detection Count'])
             
-            # Sort the birds by detection count in descending order and write to CSV
             sorted_birds = sorted(bird_counts.items(), key=lambda item: item[1], reverse=True)
             for (name_en, name_sci), count in sorted_birds:
                 writer.writerow([name_en, name_sci, count])
                 
         print(f"Summary CSV created: {csv_path}")
         
-        # 5. Write the Reaper Region CSV file (for DAW import)
+        # 5. Write the Reaper Region CSV file
         reaper_path = os.path.join(out_dir, f"{base_name}_reaper_regions.csv")
         with open(reaper_path, mode='w', newline='', encoding='utf-8') as reaper_file:
-            # Reaper requires a comma delimiter for markers/regions
             writer = csv.writer(reaper_file, delimiter=',')
             writer.writerow(['#', 'Name', 'Start', 'End', 'Length', 'Color'])
             
@@ -108,21 +128,19 @@ def run_analysis():
                 start = det['start_time']
                 end = det['end_time']
                 length = end - start
-                # Leave color empty so Reaper assigns its default color automatically
                 writer.writerow([region_id, name, start, end, length, ""])
                 
         print(f"Reaper Region file created: {reaper_path}")
 
-        # 6. Generate Spectrogram Images (if the checkbox is checked)
+        # 6. Generate Spectrogram Images (if checked)
         if do_images:
-            segment_length_s = 60 # Length of each image in seconds
+            segment_length_s = 60
             segment_samples = segment_length_s * sr
             total_duration_s = len(y) / sr
             total_segments = math.ceil(total_duration_s / segment_length_s)
             
             print(f"Creating {total_segments} borderless spectrogram images...")
             for i in range(total_segments):
-                # Calculate start and end samples for the current 60-second segment
                 start_sample = i * segment_samples
                 end_sample = min((i + 1) * segment_samples, len(y))
                 y_segment = y[start_sample:end_sample]
@@ -130,56 +148,45 @@ def run_analysis():
                 start_time_s = i * segment_length_s
                 end_time_s = start_time_s + (len(y_segment) / sr)
                 
-                # Compute the spectrogram (Decibel scale)
                 D = librosa.amplitude_to_db(np.abs(librosa.stft(y_segment)), ref=np.max)
                 
-                # Create a figure that takes up 100% of the canvas (no borders)
                 plt.figure(figsize=(20, 6))
                 ax = plt.axes([0, 0, 1, 1])
                 
                 librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='linear', cmap='magma', ax=ax)
-                ax.axis('off') # Hide axes and borders entirely
+                ax.axis('off')
                 
-                # Draw vertical lines for detected birds within this time segment
                 for det in detections:
                     det_start = det['start_time']
                     det_end = det['end_time']
                     
-                    # Check if the bird detection overlaps with the current 60-second window
                     if det_end >= start_time_s and det_start <= end_time_s:
-                        # Calculate relative positions for the image x-axis
                         rel_start = max(0, det_start - start_time_s)
                         rel_end = min(segment_length_s, det_end - start_time_s)
                         
                         label = f"{det['common_name']} ({det['confidence']:.2f})"
                         
-                        # Draw cyan lines to mark the start and end of the detection
                         ax.axvline(x=rel_start, color='cyan', linestyle='-', linewidth=2)
                         ax.axvline(x=rel_end, color='cyan', linestyle='-', linewidth=2)
-                        
-                        # Add text label for the bird
                         ax.text(rel_start, sr/5, label, color='white', rotation=90, 
                                  verticalalignment='bottom', backgroundcolor='black', fontsize=12)
                 
-                # Save the image without padding (pad_inches=0 ensures no white borders)
                 out_path = os.path.join(out_dir, f"{base_name}_min_{i+1:03d}.png")
                 plt.savefig(out_path, dpi=150, bbox_inches='tight', pad_inches=0)
                 plt.close()
                 
-        # Clean up the temporary mono audio file
         os.remove(temp_wav)
         messagebox.showinfo("Success", "Analysis complete. Files exported successfully!")
         
     except Exception as e:
         messagebox.showerror("Error", str(e))
     finally:
-        # Re-enable the start button after processing finishes or crashes
         btn_start.config(state=tk.NORMAL, text="Start Analysis")
 
 # --- GUI Setup ---
 root = tk.Tk()
-root.title("BirdNET Analyzer for Reaper")
-root.geometry("480x400")
+root.title("AvianTag - Audio Analyzer")
+root.geometry("500x480") # Slightly taller window to fit new elements
 
 def select_file():
     path = filedialog.askopenfilename(filetypes=[("Audio Files", "*.wav *.flac *.mp3")])
@@ -190,32 +197,41 @@ def select_dir():
     if path: entry_out.delete(0, tk.END); entry_out.insert(0, path)
 
 tk.Label(root, text="Audio File:").pack(pady=(10,0))
-entry_file = tk.Entry(root, width=60); entry_file.pack()
+entry_file = tk.Entry(root, width=65); entry_file.pack()
 tk.Button(root, text="Browse", command=select_file).pack()
 
 tk.Label(root, text="Output Directory:").pack(pady=(10,0))
-entry_out = tk.Entry(root, width=60); entry_out.pack()
+entry_out = tk.Entry(root, width=65); entry_out.pack()
 tk.Button(root, text="Browse", command=select_dir).pack()
 
+# --- Location & Parameters Frame ---
 frame_params = tk.Frame(root)
-frame_params.pack(pady=10)
+frame_params.pack(pady=15)
 
-tk.Label(frame_params, text="Latitude:").grid(row=0, column=0, sticky="e", padx=5)
-entry_lat = tk.Entry(frame_params, width=15); entry_lat.grid(row=0, column=1)
+# New: City search functionality
+tk.Label(frame_params, text="City (optional):").grid(row=0, column=0, sticky="e", padx=5, pady=(0,10))
+entry_city = tk.Entry(frame_params, width=15)
+entry_city.grid(row=0, column=1, pady=(0,10))
+btn_search_city = tk.Button(frame_params, text="Search City", command=fetch_coordinates, bg="#e0e0e0")
+btn_search_city.grid(row=0, column=2, padx=5, pady=(0,10))
+
+tk.Label(frame_params, text="Latitude:").grid(row=1, column=0, sticky="e", padx=5)
+entry_lat = tk.Entry(frame_params, width=15); entry_lat.grid(row=1, column=1)
 entry_lat.insert(0, "45.5")
 
-tk.Label(frame_params, text="Longitude:").grid(row=1, column=0, sticky="e", padx=5)
-entry_lon = tk.Entry(frame_params, width=15); entry_lon.grid(row=1, column=1)
+tk.Label(frame_params, text="Longitude:").grid(row=2, column=0, sticky="e", padx=5)
+entry_lon = tk.Entry(frame_params, width=15); entry_lon.grid(row=2, column=1)
 entry_lon.insert(0, "-73.6")
 
-tk.Label(frame_params, text="Calendar Week (1-52):").grid(row=2, column=0, sticky="e", padx=5)
-entry_kw = tk.Entry(frame_params, width=15); entry_kw.grid(row=2, column=1)
+tk.Label(frame_params, text="Calendar Week (1-52):").grid(row=3, column=0, sticky="e", padx=5, pady=(10,0))
+entry_kw = tk.Entry(frame_params, width=15); entry_kw.grid(row=3, column=1, pady=(10,0))
 entry_kw.insert(0, "23")
 
-tk.Label(frame_params, text="Threshold (0.1 - 1.0):").grid(row=3, column=0, sticky="e", padx=5)
-entry_thresh = tk.Entry(frame_params, width=15); entry_thresh.grid(row=3, column=1)
-entry_thresh.insert(0, "0.3")
+tk.Label(frame_params, text="Threshold (0.1 - 1.0):").grid(row=4, column=0, sticky="e", padx=5)
+entry_thresh = tk.Entry(frame_params, width=15); entry_thresh.grid(row=4, column=1)
+entry_thresh.insert(0, "0.7")
 
+# --- Options & Execution ---
 var_images = tk.BooleanVar(value=False)
 tk.Checkbutton(root, text="Generate Spectrogram Images (takes longer)", variable=var_images).pack(pady=5)
 

@@ -19,7 +19,7 @@ The script requires Python. When installing Python on Windows, ensure the option
 You must install the required Python libraries before running the script. Open the command prompt (`cmd`) and execute the following command:
 
 ```bash
-pip install birdnetlib librosa matplotlib soundfile scipy resampy tensorflow
+pip install birdnetlib librosa matplotlib soundfile scipy resampy tensorflow geopy
 
 ```
 
