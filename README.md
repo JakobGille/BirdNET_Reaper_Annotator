@@ -5,7 +5,7 @@
 This Python tool  analyzes audio recordings for bird species using the **BirdNET** machine learning model.
 The script is optimized for a seamless workflow in **Reaper**, offering both marker generation as CSV, visual sonogram export and generates an CSV overview over the detected bird species.
 
-[Example Sonogram Output](Examples/Example_Sonogram_Output.png)
+![Example Sonogram Output](Examples/Example_Sonogram_Output.png)
 
 ## Features
 
