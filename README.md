@@ -2,7 +2,7 @@
 
 *Note: The code in this repository was generated with the assistance of AI.*
 
-This Python tool  analyzes audio recordings for bird species using the **BirdNET** machine learning model.
+This Python tool analyzes audio recordings for bird species using the **BirdNET** machine learning model.
 The script is optimized for a seamless workflow in **Reaper**, offering both marker generation as CSV, visual sonogram export and generates an CSV overview over the detected bird species.
 
 ![Example Sonogram Output](Examples/Example_Sonogram_Output.png)
@@ -10,6 +10,7 @@ The script is optimized for a seamless workflow in **Reaper**, offering both mar
 ## Features
 
 - **Multichannel Audio Support:** Accepts mono, stereo, and multichannel audio files, isolating channel 1 for analysis.
+- **Merge Gap Control:** Intelligently groups detections by species and merges consecutive detections of the same bird into a single, continuous region if the time between them is smaller than the defined gap.
 - **Reaper Region Export:** Generates a CSV file formatted specifically for Reaper's Region/Marker Manager, allowing instant visualization of detected birds directly on the DAW timeline.
 - **Summary CSV Export:** Creates a clean summary table listing all detected species, their scientific names, and total detection counts.
 - **Optional Spectrogram Generation:** Generates exact, borderless 60-second spectrogram images (PNG). These serve as a visual frequency map with cyan lines highlighting exactly where the AI detected a bird, making it easier to verify calls visually.
@@ -20,31 +21,24 @@ The script requires Python. When installing Python on Windows, ensure the option
 
 You must install the required Python libraries before running the script. Open the command prompt (`cmd`) and execute the following command:
 
-```bash
-pip install birdnetlib librosa matplotlib soundfile scipy resampy tensorflow geopy
-
-```
+    pip install birdnetlib librosa matplotlib soundfile scipy resampy tensorflow geopy
 
 *Note: `tensorflow` is explicitly required as the runtime environment for the BirdNET machine learning model.*
 
 ## Usage
 
 1. Run the script via the command line or by executing the file:
+   
+       python bird_analyzer.py
 
-```bash
-python bird_analyzer.py
-
-```
-
-1. Select your input audio file and the desired output directory.
-2. Enter the location metadata for the recording:
-
-- **Latitude / Longitude:** Decimal format (e.g., 45.5 and -73.6).
-- **Calendar Week:** 1 to 52.
-
-1. Set the detection **Threshold** (0.1 to 1.0). A value of `0.3` is recommended.
-2. (Optional) Check the box to generate spectrogram images. *Note: This significantly increases processing time.*
-3. Click **Start Analysis**. The model will be downloaded automatically upon the very first execution.
+2. Select your input audio file and the desired output directory.
+3. Enter the location metadata for the recording:
+   - **Latitude / Longitude:** Decimal format (e.g., 45.5 and -73.6).
+   - **Calendar Week:** 1 to 52.
+4. Set the detection **Threshold** (0.1 to 1.0). A value of `0.3` is recommended.
+5. Set the **Merge Gap (s)**. Defines the maximum time (in seconds) between two detections of the same bird species to be merged into one continuous region.
+6. (Optional) Check the box to generate spectrogram images. *Note: This significantly increases processing time.*
+7. Click **Start Analysis**. The model will be downloaded automatically upon the very first execution.
 
 ## Reaper Integration Workflow
 
@@ -73,14 +67,13 @@ To align them:
 ### Citation & Acknowledgments
 
 This tool utilizes the BirdNET algorithm for avian detection and refers to the original BirdNET publication:
-```bash
-@article{kahl2021birdnet,
-  title={BirdNET: A deep learning solution for avian diversity monitoring},
-  author={Kahl, Stefan and Wood, Connor M and Eibl, Maximilian and Klinck, Holger},
-  journal={Ecological Informatics},
-  volume={61},
-  pages={101236},
-  year={2021},
-  publisher={Elsevier}
-}
-```
+
+    @article{kahl2021birdnet,
+      title={BirdNET: A deep learning solution for avian diversity monitoring},
+      author={Kahl, Stefan and Wood, Connor M and Eibl, Maximilian and Klinck, Holger},
+      journal={Ecological Informatics},
+      volume={61},
+      pages={101236},
+      year={2021},
+      publisher={Elsevier}
+    }

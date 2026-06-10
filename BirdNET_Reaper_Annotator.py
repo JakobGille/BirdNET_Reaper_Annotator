@@ -37,20 +37,18 @@ def fetch_coordinates():
         else:
             messagebox.showwarning("Not Found", f"Could not find coordinates for '{city_name}'.")
     except Exception as e:
-        messagebox.showerror("Network Error", f"Failed to retrieve coordinates. Are you connected to the internet?\n\nDetails: {e}")
+        messagebox.showerror("Network Error", f"Failed to retrieve coordinates.\n\nDetails: {e}")
 
 def run_analysis():
-    # Get user inputs from the GUI
-    # file_paths_string contains multiple paths separated by "; "
+    # Retrieve user inputs from the GUI
     file_paths_string = entry_file.get()
     out_dir = entry_out.get()
     
-    # Check if both paths are provided
     if not file_paths_string or not out_dir:
         messagebox.showwarning("Missing Paths", "Please select at least one audio file and an output directory.")
         return
 
-    # Convert the joined string back into a list of individual file paths
+    # Convert the semicolon-separated string back into a list of file paths
     file_paths = file_paths_string.split("; ")
 
     # Parse and validate numerical inputs
@@ -59,8 +57,9 @@ def run_analysis():
         lon = float(entry_lon.get())
         kw = int(entry_kw.get())
         threshold = float(entry_thresh.get())
+        merge_gap = float(entry_gap.get())
     except ValueError:
-        messagebox.showwarning("Invalid Input", "Please check your inputs for coordinates, week, and threshold.")
+        messagebox.showwarning("Invalid Input", "Please check your inputs for coordinates, week, threshold, and merge gap.")
         return
 
     # Convert the standard 52-week calendar format into BirdNET's required 48-week format
@@ -78,25 +77,22 @@ def run_analysis():
 
         # Iterate over all selected files
         for idx, file_path in enumerate(file_paths):
-            
-            # Extract the base name of the audio file without extension for unique file naming
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             
-            # Update the UI button to show current progress
             btn_start.config(text=f"Analyzing {idx + 1}/{len(file_paths)}... Please wait.")
             root.update()
             print(f"--- Processing File {idx + 1} of {len(file_paths)}: {base_name} ---")
 
-            # 1. Load the audio file and extract the first channel (e.g., W-channel for Ambisonics)
+            # Load the audio file and extract the first channel (e.g., W-channel for Ambisonics)
             y, sr = librosa.load(file_path, sr=48000, mono=False)
             if y.ndim > 1:
-                y = y[0] # Keep only the first channel
+                y = y[0] 
             
-            # 2. Save a temporary mono WAV file required by the BirdNET analyzer
+            # Save a temporary mono WAV file required by the BirdNET analyzer
             temp_wav = os.path.join(tempfile.gettempdir(), f"temp_mono_birdnet_{idx}.wav")
             sf.write(temp_wav, y, sr)
             
-            # 3. Setup recording instance and run the BirdNET analysis for the current file
+            # Setup recording instance and run the BirdNET analysis
             recording = Recording(
                 analyzer,
                 temp_wav,
@@ -106,19 +102,57 @@ def run_analysis():
                 min_conf=threshold
             )
             recording.analyze()
-            detections = recording.detections
+            raw_detections = recording.detections
             
-            # 4. Write the summary CSV file (Grouped and counted species)
-            csv_path = os.path.join(out_dir, f"{base_name}_bird_summary.csv")
+            # --- Merge Logic ---
+            # Group detections by species first to prevent merging different birds
+            grouped_detections = {}
+            for det in raw_detections:
+                key = (det['common_name'], det['scientific_name'])
+                if key not in grouped_detections:
+                    grouped_detections[key] = []
+                grouped_detections[key].append(det)
+                
+            merged_detections = []
+            for key, det_list in grouped_detections.items():
+                # Sort detections for this specific bird chronologically
+                det_list = sorted(det_list, key=lambda x: x['start_time'])
+                
+                # Start the merged list with the first detection
+                current_merged = [det_list[0].copy()]
+                
+                for i in range(1, len(det_list)):
+                    current_det = det_list[i]
+                    previous_det = current_merged[-1]
+                    
+                    # Calculate time gap between current start and previous end
+                    time_gap = current_det['start_time'] - previous_det['end_time']
+                    
+                    if time_gap <= merge_gap:
+                        # Merge events: extend end time and keep the highest confidence score
+                        previous_det['end_time'] = max(previous_det['end_time'], current_det['end_time'])
+                        previous_det['confidence'] = max(previous_det['confidence'], current_det['confidence'])
+                    else:
+                        # Gap is too large, treat it as a distinctly new region for this bird
+                        current_merged.append(current_det.copy())
+                        
+                merged_detections.extend(current_merged)
+                
+            # Sort all final merged detections chronologically
+            merged_detections = sorted(merged_detections, key=lambda x: x['start_time'])
+            
+            # Export the summary CSV file using the updated explicit naming convention
+            csv_path = os.path.join(out_dir, f"{base_name}_BIRDNET_Summary.csv")
             
             bird_counts = {}
-            for det in detections:
+            for det in merged_detections:
                 key = (det['common_name'], det['scientific_name'])
                 bird_counts[key] = bird_counts.get(key, 0) + 1
                 
             with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
                 writer = csv.writer(csv_file, delimiter=';')
                 writer.writerow([base_name, f"{lat}, {lon}", f"Week {kw}"])
+                writer.writerow([f"Threshold: {threshold}", f"Merge Gap: {merge_gap}s"])
                 writer.writerow([]) 
                 writer.writerow(['Common Name (EN)', 'Scientific Name', 'Detection Count'])
                 
@@ -129,23 +163,21 @@ def run_analysis():
                     
             print(f"Summary CSV created: {csv_path}")
             
-            # 5. Write the Reaper Region CSV file
-            reaper_path = os.path.join(out_dir, f"{base_name}_reaper_regions.csv")
+            # Export the Reaper Region CSV file using the updated explicit naming convention
+            reaper_path = os.path.join(out_dir, f"{base_name}_BIRDNET_Reaper_Regions.csv")
             with open(reaper_path, mode='w', newline='', encoding='utf-8') as reaper_file:
                 writer = csv.writer(reaper_file, delimiter=',')
                 writer.writerow(['#', 'Name', 'Start', 'End', 'Length', 'Color'])
                 
-                for det_idx, det in enumerate(detections):
+                for det_idx, det in enumerate(merged_detections):
                     region_id = f"R{det_idx+1}"
                     name = f"{det['common_name']} ({det['confidence']:.2f})"
-                    start = det['start_time']
-                    end = det['end_time']
-                    length = end - start
-                    writer.writerow([region_id, name, start, end, length, ""])
+                    length = det['end_time'] - det['start_time']
+                    writer.writerow([region_id, name, det['start_time'], det['end_time'], length, ""])
                     
             print(f"Reaper Region file created: {reaper_path}")
 
-            # 6. Generate Spectrogram Images (if checked)
+            # Generate Spectrogram Images (if checked)
             if do_images:
                 segment_length_s = 60
                 segment_samples = segment_length_s * sr
@@ -161,21 +193,18 @@ def run_analysis():
                     start_time_s = i * segment_length_s
                     end_time_s = start_time_s + (len(y_segment) / sr)
                     
-                    # Convert amplitude to decibels for visualization
                     D = librosa.amplitude_to_db(np.abs(librosa.stft(y_segment)), ref=np.max)
                     
                     plt.figure(figsize=(20, 6))
-                    ax = plt.axes([0, 0, 1, 1]) # Borderless plot
+                    ax = plt.axes([0, 0, 1, 1])
                     
                     librosa.display.specshow(D, sr=sr, x_axis='time', y_axis='linear', cmap='magma', ax=ax)
                     ax.axis('off')
                     
-                    # Draw detection markers and labels on the spectrogram
-                    for det in detections:
+                    for det in merged_detections:
                         det_start = det['start_time']
                         det_end = det['end_time']
                         
-                        # Check if the detection falls within the current 60-second segment
                         if det_end >= start_time_s and det_start <= end_time_s:
                             rel_start = max(0, det_start - start_time_s)
                             rel_end = min(segment_length_s, det_end - start_time_s)
@@ -199,20 +228,17 @@ def run_analysis():
     except Exception as e:
         messagebox.showerror("Error", str(e))
     finally:
-        # Restore button state after processing
         btn_start.config(state=tk.NORMAL, text="Start Analysis")
 
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("AvianTag - Audio Analyzer")
-root.geometry("500x480")
+root.geometry("500x520")
 
 def select_file():
-    # Use askopenfilenames to allow multiple file selection
     paths = filedialog.askopenfilenames(filetypes=[("Audio Files", "*.wav *.flac *.mp3")])
     if paths:
         entry_file.delete(0, tk.END)
-        # Join paths with a semicolon to store them in the single text entry
         entry_file.insert(0, "; ".join(paths))
 
 def select_dir():
@@ -254,6 +280,10 @@ entry_kw.insert(0, "23")
 tk.Label(frame_params, text="Threshold (0.1 - 1.0):").grid(row=4, column=0, sticky="e", padx=5)
 entry_thresh = tk.Entry(frame_params, width=15); entry_thresh.grid(row=4, column=1)
 entry_thresh.insert(0, "0.7")
+
+tk.Label(frame_params, text="Merge Gap (s):").grid(row=5, column=0, sticky="e", padx=5, pady=(10,0))
+entry_gap = tk.Entry(frame_params, width=15); entry_gap.grid(row=5, column=1, pady=(10,0))
+entry_gap.insert(0, "3.0") 
 
 # --- Options & Execution ---
 var_images = tk.BooleanVar(value=False)
