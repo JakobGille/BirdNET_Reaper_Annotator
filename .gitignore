@@ -40,3 +40,6 @@ Desktop.ini
 
 !Example_CSV_Output.csv
 !Example_Sonogram_Output.png
+
+# Reaper Specific
+*.RPP-bak
