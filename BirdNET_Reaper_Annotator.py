@@ -23,12 +23,10 @@ def fetch_coordinates():
         return
         
     try:
-        # Nominatim requires a custom user_agent string to identify the application
         geolocator = Nominatim(user_agent="birdnet_reaper_analyzer_tool")
         location = geolocator.geocode(city_name)
         
         if location:
-            # Clear existing values and insert the new coordinates
             entry_lat.delete(0, tk.END)
             entry_lat.insert(0, str(round(location.latitude, 4)))
             
@@ -40,7 +38,6 @@ def fetch_coordinates():
         messagebox.showerror("Network Error", f"Failed to retrieve coordinates.\n\nDetails: {e}")
 
 def run_analysis():
-    # Retrieve user inputs from the GUI
     file_paths_string = entry_file.get()
     out_dir = entry_out.get()
     
@@ -48,34 +45,30 @@ def run_analysis():
         messagebox.showwarning("Missing Paths", "Please select at least one audio file and an output directory.")
         return
 
-    # Convert the semicolon-separated string back into a list of file paths
     file_paths = file_paths_string.split("; ")
 
-    # Parse and validate numerical inputs
+    # Parse numerical inputs, including the new time_offset
     try:
         lat = float(entry_lat.get())
         lon = float(entry_lon.get())
         kw = int(entry_kw.get())
         threshold = float(entry_thresh.get())
         merge_gap = float(entry_gap.get())
+        time_offset = float(entry_offset.get())
     except ValueError:
-        messagebox.showwarning("Invalid Input", "Please check your inputs for coordinates, week, threshold, and merge gap.")
+        messagebox.showwarning("Invalid Input", "Please check your numerical inputs (Coordinates, Week, Threshold, Merge Gap, Offset).")
         return
 
-    # Convert the standard 52-week calendar format into BirdNET's required 48-week format
     week_48 = max(1, min(48, int(kw * 48 / 52)))
     do_images = var_images.get()
 
-    # Disable the start button while the background processing is running
     btn_start.config(state=tk.DISABLED)
     root.update()
 
     try:
-        # Initialize the BirdNET analyzer once before the loop to save processing time
         print("Initializing BirdNET analyzer...")
         analyzer = Analyzer()
 
-        # Iterate over all selected files
         for idx, file_path in enumerate(file_paths):
             base_name = os.path.splitext(os.path.basename(file_path))[0]
             
@@ -83,16 +76,13 @@ def run_analysis():
             root.update()
             print(f"--- Processing File {idx + 1} of {len(file_paths)}: {base_name} ---")
 
-            # Load the audio file and extract the first channel (e.g., W-channel for Ambisonics)
             y, sr = librosa.load(file_path, sr=48000, mono=False)
             if y.ndim > 1:
                 y = y[0] 
             
-            # Save a temporary mono WAV file required by the BirdNET analyzer
             temp_wav = os.path.join(tempfile.gettempdir(), f"temp_mono_birdnet_{idx}.wav")
             sf.write(temp_wav, y, sr)
             
-            # Setup recording instance and run the BirdNET analysis
             recording = Recording(
                 analyzer,
                 temp_wav,
@@ -105,7 +95,6 @@ def run_analysis():
             raw_detections = recording.detections
             
             # --- Merge Logic ---
-            # Group detections by species first to prevent merging different birds
             grouped_detections = {}
             for det in raw_detections:
                 key = (det['common_name'], det['scientific_name'])
@@ -115,33 +104,26 @@ def run_analysis():
                 
             merged_detections = []
             for key, det_list in grouped_detections.items():
-                # Sort detections for this specific bird chronologically
                 det_list = sorted(det_list, key=lambda x: x['start_time'])
-                
-                # Start the merged list with the first detection
                 current_merged = [det_list[0].copy()]
                 
                 for i in range(1, len(det_list)):
                     current_det = det_list[i]
                     previous_det = current_merged[-1]
                     
-                    # Calculate time gap between current start and previous end
                     time_gap = current_det['start_time'] - previous_det['end_time']
                     
                     if time_gap <= merge_gap:
-                        # Merge events: extend end time and keep the highest confidence score
                         previous_det['end_time'] = max(previous_det['end_time'], current_det['end_time'])
                         previous_det['confidence'] = max(previous_det['confidence'], current_det['confidence'])
                     else:
-                        # Gap is too large, treat it as a distinctly new region for this bird
                         current_merged.append(current_det.copy())
                         
                 merged_detections.extend(current_merged)
                 
-            # Sort all final merged detections chronologically
             merged_detections = sorted(merged_detections, key=lambda x: x['start_time'])
             
-            # Export the summary CSV file using the updated explicit naming convention
+            # Export Summary CSV (Offset does not apply here as it contains no timestamps)
             csv_path = os.path.join(out_dir, f"{base_name}_BIRDNET_Summary.csv")
             
             bird_counts = {}
@@ -152,18 +134,17 @@ def run_analysis():
             with open(csv_path, mode='w', newline='', encoding='utf-8') as csv_file:
                 writer = csv.writer(csv_file, delimiter=';')
                 writer.writerow([base_name, f"{lat}, {lon}", f"Week {kw}"])
-                writer.writerow([f"Threshold: {threshold}", f"Merge Gap: {merge_gap}s"])
+                writer.writerow([f"Threshold: {threshold}", f"Merge Gap: {merge_gap}s", f"Offset: {time_offset}s"])
                 writer.writerow([]) 
                 writer.writerow(['Common Name (EN)', 'Scientific Name', 'Detection Count'])
                 
-                # Sort birds by detection count in descending order
                 sorted_birds = sorted(bird_counts.items(), key=lambda item: item[1], reverse=True)
                 for (name_en, name_sci), count in sorted_birds:
                     writer.writerow([name_en, name_sci, count])
                     
             print(f"Summary CSV created: {csv_path}")
             
-            # Export the Reaper Region CSV file using the updated explicit naming convention
+            # Export Reaper Region CSV (Offset is applied to absolute timestamps)
             reaper_path = os.path.join(out_dir, f"{base_name}_BIRDNET_Reaper_Regions.csv")
             with open(reaper_path, mode='w', newline='', encoding='utf-8') as reaper_file:
                 writer = csv.writer(reaper_file, delimiter=',')
@@ -173,11 +154,16 @@ def run_analysis():
                     region_id = f"R{det_idx+1}"
                     name = f"{det['common_name']} ({det['confidence']:.2f})"
                     length = det['end_time'] - det['start_time']
-                    writer.writerow([region_id, name, det['start_time'], det['end_time'], length, ""])
+                    
+                    # Apply the user-defined time offset to shift the region on the timeline
+                    offset_start = det['start_time'] + time_offset
+                    offset_end = det['end_time'] + time_offset
+                    
+                    writer.writerow([region_id, name, offset_start, offset_end, length, ""])
                     
             print(f"Reaper Region file created: {reaper_path}")
 
-            # Generate Spectrogram Images (if checked)
+            # Generate Spectrogram Images (Offset does not apply to audio analysis bounds)
             if do_images:
                 segment_length_s = 60
                 segment_samples = segment_length_s * sr
@@ -220,7 +206,6 @@ def run_analysis():
                     plt.savefig(out_path, dpi=150, bbox_inches='tight', pad_inches=0)
                     plt.close()
                     
-            # Remove the temporary WAV file for the current audio file
             os.remove(temp_wav)
             
         messagebox.showinfo("Success", f"Analysis complete. {len(file_paths)} file(s) exported successfully!")
@@ -233,7 +218,7 @@ def run_analysis():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("AvianTag - Audio Analyzer")
-root.geometry("500x520")
+root.geometry("500x550") # Height increased for new parameter
 
 def select_file():
     paths = filedialog.askopenfilenames(filetypes=[("Audio Files", "*.wav *.flac *.mp3")])
@@ -284,6 +269,11 @@ entry_thresh.insert(0, "0.7")
 tk.Label(frame_params, text="Merge Gap (s):").grid(row=5, column=0, sticky="e", padx=5, pady=(10,0))
 entry_gap = tk.Entry(frame_params, width=15); entry_gap.grid(row=5, column=1, pady=(10,0))
 entry_gap.insert(0, "3.0") 
+
+# New Offset Parameter
+tk.Label(frame_params, text="Item Start Offset (s):").grid(row=6, column=0, sticky="e", padx=5, pady=(10,0))
+entry_offset = tk.Entry(frame_params, width=15); entry_offset.grid(row=6, column=1, pady=(10,0))
+entry_offset.insert(0, "0.0") 
 
 # --- Options & Execution ---
 var_images = tk.BooleanVar(value=False)
